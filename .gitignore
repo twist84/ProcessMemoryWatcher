@@ -1,0 +1,11 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/Debug
+/Release
+/x64
+/ProcessMemoryWatcher/Debug
+/ProcessMemoryWatcher/Release
+/ProcessMemoryWatcher/x64
