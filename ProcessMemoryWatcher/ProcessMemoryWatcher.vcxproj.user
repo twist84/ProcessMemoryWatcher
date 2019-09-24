@@ -8,4 +8,12 @@
     <LocalDebuggerCommandArguments>-sleep 500 -process eldorado.exe -type 3 -address 0x1F91800 -offset 0x24 -exit-on-match mainmenu</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerCommandArguments>-sleep 500 -process eldorado.exe -type 3 -address 0x1F91800 -offset 0x24 -exit-on-match mainmenu</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommandArguments>-sleep 500 -process eldorado.exe -type 3 -address 0x1F91800 -offset 0x24 -exit-on-match mainmenu</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
 </Project>
