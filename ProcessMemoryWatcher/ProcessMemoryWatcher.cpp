@@ -49,9 +49,12 @@ enum MemoryType : int
 	Bool,
 	Int,
 	Float,
-	String,
-
-	Count
+	String
+};
+enum MatchType : int
+{
+	DoNothing,
+	CloseApp
 };
 
 void HexStringToInt(std::wstring str, size_t &out)
@@ -110,7 +113,7 @@ struct Process
 	{
 		if (HandleValid())
 		{
-			ReadProcessMemory(m_pHandle, (void *)(address + offset), value, sizeof(m_type), NULL);
+			ReadProcessMemory(m_pHandle, reinterpret_cast<LPVOID>(address + offset), value, sizeof(m_type), NULL);
 		}
 
 		return this;
@@ -121,36 +124,51 @@ struct Process
 	{
 		if (HandleValid())
 		{
-			WriteProcessMemory(m_pHandle, (void *)(address + offset), &value, sizeof(m_type), NULL);
+			WriteProcessMemory(m_pHandle, reinterpret_cast<LPVOID>(address + offset), &value, sizeof(m_type), NULL);
 		}
 
 		return this;
 	}
 
-	bool Match(MemoryType type, size_t address, size_t offset, std::wstring value)
+	void Match(MemoryType memoryType, size_t address, size_t offset, std::wstring value, MatchType matchType)
 	{
+		if (value == L"")
+			matchType = MatchType::DoNothing;
+
+		bool run = false;
+
 		static bool s_bool;
 		static int s_int;
 		static float s_float;
-		static char s_string[260];
+		static char s_string[1024];
 
-		switch (type)
+		switch (memoryType)
 		{
 		case MemoryType::Bool:
 			Read(address, offset, &s_bool);
-			return s_bool == static_cast<bool>(std::stoul(value.c_str()));
+			run = s_bool == static_cast<bool>(std::stoul(value.c_str()));
 		case MemoryType::Int:
 			Read(address, offset, &s_int);
-			return s_int == std::stoul(value);
+			run = s_int == std::stoul(value);
 		case MemoryType::Float:
 			Read(address, offset, &s_float);
-			return s_float == std::stof(value);
+			run = s_float == std::stof(value);
 		case MemoryType::String:
 			Read(address, offset, &s_string);
-			return (ToWideString(s_string).find(value) != std::string::npos) == true;
+			run = wcsstr(ToWideString(s_string).c_str(), value.c_str()) != 0;
 		}
 
-		return false;
+		if (run)
+		{
+			switch (matchType)
+			{
+			case CloseApp:
+				Close();
+				break;
+			case DoNothing:
+				break;
+			}
+		}
 	}
 
 	Process *Print(MemoryType type, size_t address, size_t offset)
@@ -158,7 +176,7 @@ struct Process
 		static bool s_bool;
 		static int s_int;
 		static float s_float;
-		static char s_string[260];
+		static char s_string[1024];
 
 		switch (type)
 		{
@@ -183,7 +201,7 @@ struct Process
 		return this;
 	}
 
-	DWORD_PTR AddBase(size_t *offet, std::wstring module = L"")
+	DWORD_PTR AddBase(size_t &offet, std::wstring module = L"")
 	{
 		if (!module[0])
 		{
@@ -213,7 +231,7 @@ struct Process
 			}
 		}
 
-		*offet += dwModuleBaseAddress;
+		offet += dwModuleBaseAddress;
 		return dwModuleBaseAddress;
 	}
 };
@@ -228,7 +246,7 @@ struct CommandLine
 		szArgList = CommandLineToArgvW(GetCommandLineW(), &numArgs);
 	}
 
-	void GetString(std::wstring argName, std::wstring &value, std::wstring defaultValue = L"")
+	bool GetString(std::wstring argName, std::wstring &value, std::wstring defaultValue = L"")
 	{
 		value = defaultValue;
 
@@ -246,24 +264,32 @@ struct CommandLine
 				}
 			}
 		}
+
+		return value != defaultValue;
 	}
 
-	void GetInt(std::wstring argName, int &value, int defaultValue = -1)
+	bool GetInt(std::wstring argName, int &value, int defaultValue = -1)
 	{
 		std::wstring out; GetString(argName, out, std::to_wstring(defaultValue));
 		value = std::stoul(out);
+
+		return value != defaultValue;
 	}
 
-	void GetBool(std::wstring argName, bool &value, bool defaultValue = false)
+	bool GetBool(std::wstring argName, bool &value, bool defaultValue = false)
 	{
 		int out; GetInt(argName, out, defaultValue);
 		value = out;
+
+		return value != defaultValue;
 	}
 
-	void GetHex(std::wstring argName, size_t &value, size_t defaultValue = 0)
+	bool GetHex(std::wstring argName, size_t &value, size_t defaultValue = 0)
 	{
-		std::wstring out; GetString(argName, out);
+		std::wstring out; GetString(argName, out, std::to_wstring(defaultValue));
 		HexStringToInt(out.c_str(), value);
+
+		return value != defaultValue;
 	}
 };
 
@@ -278,6 +304,7 @@ int main()
 	static size_t s_address;
 	static size_t s_offset;
 	static std::wstring s_matchDelim;
+	static MatchType s_matchType = MatchType::DoNothing;
 
 	cli.GetInt(L"-sleep", s_sleep, 1000);
 	cli.GetString(L"-process", s_processName);
@@ -285,18 +312,19 @@ int main()
 	cli.GetInt(L"-type", s_type);
 	cli.GetHex(L"-address", s_address);
 	cli.GetHex(L"-offset", s_offset);
-	cli.GetString(L"-exit-on-match", s_matchDelim);
+
+	if (cli.GetString(L"-exit-on-match", s_matchDelim))
+		s_matchType = MatchType::CloseApp;
 
 	Process p = Process(s_processName);
-	p.Open()->AddBase(&s_address, s_moduleName[0] ? s_moduleName : s_processName);
+	p.Open()->AddBase(s_address, s_moduleName[0] ? s_moduleName : s_processName);
 
 	while (p.HandleValid())
 	{
+		if (s_type == -1 && s_moduleName[0])
+			printf_s("[0x%IX, %S]\n", s_address, s_moduleName.c_str());
 
-		if (p.Print(MemoryType(s_type), s_address, s_offset)->Match(MemoryType(s_type), s_address, s_offset, s_matchDelim))
-		{
-			p.Close();
-		}
+		p.Print(MemoryType(s_type), s_address, s_offset)->Match(MemoryType(s_type), s_address, s_offset, s_matchDelim, s_matchType);
 
 		Sleep(s_sleep);
 	}
