@@ -132,8 +132,8 @@ struct Process
 
 	void Match(MemoryType memoryType, size_t address, size_t offset, std::wstring value, MatchType matchType)
 	{
-		if (value == L"")
-			matchType = MatchType::DoNothing;
+		if (!value[0])
+			return;
 
 		bool run = false;
 
